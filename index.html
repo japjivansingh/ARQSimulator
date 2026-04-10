@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Advanced ARQ Simulator — Project Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+    
+    <style>
+        :root {
+            --bg-main: #0b1120;
+            --card-bg: #111827;
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --btn-start: #06b6d4;
+            --btn-step: #22d3ee;
+            --btn-reset: #f43f5e;
+            --success: #10b981;
+            --error: #f43f5e;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app { max-width: 1200px; margin: 0 auto; }
+
+        /* GUIDELINES: Section Styling */
+        .section-header { margin-bottom: 25px; padding: 20px; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); }
+        .section-header h1 { color: var(--accent); margin-bottom: 10px; }
+        
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+        
+        input, select {
+            background: #1f2937;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        input[type="range"] { width: 100%; height: 4px; background: #334155; border: none; cursor: pointer; }
+
+        .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+            font-size: 0.85rem;
+        }
+        .btn-start { background: var(--btn-start); color: #000; box-shadow: 0 0 15px var(--accent-glow); }
+        .btn-step { background: var(--btn-step); color: #000; }
+        .btn-reset { background: var(--btn-reset); color: #fff; }
+        .btn-nav { background: #334155; color: white; }
+
+        .track-section {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .frame-track { display: flex; gap: 10px; padding: 10px 0; }
+        .frame-node {
+            width: 35px; height: 35px; border: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 0.75rem; font-weight: bold;
+            transition: background 0.3s;
+        }
+        .frame-node.sent { background: var(--success); color: white; border: none; }
+        .frame-node.pending { background: var(--accent); color: white; border: none; }
+        .frame-node.lost { background: var(--error); color: white; border: none; }
+
+        .window-box {
+            position: absolute; height: 55px; top: 25px;
+            border: 2px solid var(--accent); border-radius: 8px;
+            background: rgba(56, 189, 248, 0.1); transition: 0.3s ease;
+        }
+
+        .sim-container { display: grid; grid-template-columns: 1fr 350px; gap: 20px; }
+        .canvas-card {
+            background: #f8fafc;
+            border-radius: 12px;
+            overflow-y: auto;
+            height: 600px;
+            border: 1px solid var(--border);
+        }
+        .log-box {
+            background: #000; color: var(--success); font-family: 'Courier New', monospace;
+            padding: 15px; border-radius: 12px; height: 600px; overflow-y: auto;
+            font-size: 0.85rem; border: 1px solid var(--border);
+        }
+        .value-badge { color: var(--accent); font-weight: bold; font-size: 0.8rem; }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: var(--card-bg); padding: 30px; border-radius: 12px;
+            border: 2px solid var(--accent); max-width: 600px; width: 90%; color: white;
+        }
+        .team-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; text-align: center; }
+        .team-member img { width: 80px; height: 80px; background: #334155; border-radius: 50%; object-fit: cover; margin-bottom: 10px; border: 2px solid var(--accent); }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div class="section-header">
+        <h1>Selective Repeat & Stop-and-Wait ARQ</h1>
+        <p style="color: var(--text-muted); margin-bottom: 15px;">
+            <b>Definition:</b> Automatic Repeat Request (ARQ) is an error-control strategy for data transmission that relies on acknowledgments (ACKs) and timeouts to achieve reliable data delivery over an unreliable service[cite: 6, 9].
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div>
+                <h4>Process Steps[cite: 7]:</h4>
+                <ul style="font-size: 0.85rem; color: var(--text-muted); padding-left: 20px; line-height: 1.6;">
+                    <li>Sender transmits a packet and starts a local timer[cite: 7].</li>
+                    <li>Receiver checks for errors and sends an ACK if data is valid[cite: 7, 8].</li>
+                    <li>If ACK arrives before timeout, sender moves the window[cite: 7, 8, 11].</li>
+                    <li>If timeout occurs, sender retransmits the unacknowledged frame[cite: 7, 11].</li>
+                </ul>
+            </div>
+            <div style="background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9;">
+                <iframe width="1372" height="772" src="https://www.youtube.com/embed/l_3MmGX1OgM" title="STOP AND WAIT PROTOCOL" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls-grid">
+        <div class="control-group">
+            <label>Number of Frames</label>
+            <input id="numFrames" type="number" value="15">
+        </div>
+        <div class="control-group">
+            <label>Window Size (N) [cite: 34]</label>
+            <input id="winSize" type="number" value="4">
+        </div>
+        <div class="control-group">
+            <label>Timeout (ms)</label>
+            <input id="timeout" type="number" value="6000">
+        </div>
+        <div class="control-group">
+            <label>Frame Loss %</label>
+            <input id="frameLossRange" type="range" min="0" max="80" value="15" oninput="updateVal('frameLossVal', this.value)">
+            <span class="value-badge" id="frameLossVal">15%</span>
+        </div>
+
+        <div class="control-group">
+            <label>Frame Loss Mode</label>
+            <select id="lossMode">
+                <option value="random">Random (by %)</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Frame Delay Mode</label>
+            <select id="delayMode">
+                <option value="none">None</option>
+                <option value="random">Random Delay</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>ACK Loss %</label>
+            <input id="ackLossRange" type="range" min="0" max="80" value="5" oninput="updateVal('ackLossVal', this.value)">
+            <span class="value-badge" id="ackLossVal">5%</span>
+        </div>
+        <div class="control-group">
+            <label>ACK Loss Mode</label>
+            <select id="ackLossMode">
+                <option value="random">Random (by %)</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>ACK Delay (ms)</label>
+            <input id="ackDelay" type="number" value="800">
+        </div>
+        <div class="control-group">
+            <label>Simulation Mode [cite: 50]</label>
+            <select id="simMode" onchange="resetSim()">
+                <option value="SR">Selective Repeat</option>
+                <option value="SW">Stop and Wait</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Summary Diagram</label>
+            <select id="diagramMode">
+                <option value="diagonals">Textbook diagonals</option>
+                <option value="vertical">Vertical two-columns</option>
+            </select>
+        </div>
+        <div class="control-group" style="justify-content: flex-end;">
+            <div class="actions">
+                <button class="btn btn-start" onclick="startAuto()">Start</button>
+                <button class="btn btn-step" onclick="stepSim()">Step (Fill Window)</button>
+                <button class="btn btn-reset" onclick="resetSim()">Reset</button>
+                
+                <button class="btn btn-nav" onclick="showModal('devModal')">Developed by</button>
+                <button class="btn btn-nav" onclick="showModal('helpModal')">Learn / Help</button>
+                <button class="btn btn-nav" onclick="window.open('https://sites.google.com/view/swe2002/virtual-lab?authuser=0', '_blank')">Virtual Lab</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="track-section" id="track">
+        <div id="winOverlay" class="window-box"></div>
+        <div class="frame-track" id="nodeTrack"></div>
+    </div>
+
+    <div class="sim-container">
+        <div class="canvas-card" id="canvasScroll">
+            <canvas id="mainCanvas" width="750" height="5000"></canvas>
+        </div>
+        <div class="log-box" id="logBox">> System Ready.</div>
+    </div>
+</div>
+
+<div id="devModal" class="modal-overlay" onclick="closeModal('devModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h2>Project Development Team</h2>
+        <div class="team-grid">
+            <div class="team-member">
+                <img src="Japjivan Singh Photo.jpeg" alt="Student 1">
+                <p><b>Japjivan Singh</b><br>Lead Developer</p>
+            </div>
+            <div class="team-member">
+                <img src="professor.jpg" alt="Student 2">
+                <p><b>Guided By</b><br>Professor</p>
+            </div>
+        </div>
+        <p style="margin-top: 25px; text-align: center; color: var(--accent);">Guided by: Prof. Swaminathan A.</p>
+        <button class="btn btn-reset" style="width:100%; margin-top:20px;" onclick="closeModal('devModal')">Close</button>
+    </div>
+</div>
+
+<div id="helpModal" class="modal-overlay" onclick="closeModal('helpModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h2>Further Reading & References</h2>
+        <div style="margin-top: 15px; font-size: 0.9rem; line-height: 1.6;">
+            <p><b>Prescribed Textbook[cite: 20]:</b> "Computer Networking: A Top-Down Approach" by Kurose & Ross.</p>
+            <p><b>Official Documentation[cite: 21]:</b> <a href="https://datatracker.ietf.org/doc/html/rfc793" target="_blank" style="color:var(--accent);">RFC 793 - Transmission Control Protocol</a></p>
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
+            <h4>How to use the Simulator[cite: 47]:</h4>
+            <ul>
+                <li>Adjust <b>Window Size</b> to see how many packets can fly at once[cite: 34].</li>
+                <li>Set <b>Frame Loss %</b> to simulate noisy channels[cite: 35].</li>
+                <li>Use <b>Step</b> to move frame-by-frame or <b>Start</b> for auto-sim[cite: 52].</li>
+            </ul>
+        </div>
+        <button class="btn btn-reset" style="width:100%; margin-top:20px;" onclick="closeModal('helpModal')">Close</button>
+    </div>
+</div>
+
+<script>
+    const $ = id => document.getElementById(id);
+    const canvas = $('mainCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let state = {
+        base: 0,
+        next: 0,
+        acked: [],
+        y: 60,
+        isWaiting: false,
+        timer: null
+    };
+
+    function updateVal(id, val) { $(id).innerText = val + '%'; }
+
+    function log(msg, color = 'var(--success)') {
+        $('logBox').innerHTML = `<div style="color:${color}">> ${msg}</div>` + $('logBox').innerHTML;
+    }
+
+    function showModal(id) { $(id).style.display = 'flex'; }
+    function closeModal(id) { $(id).style.display = 'none'; }
+
+    function init() {
+        const count = parseInt($('numFrames').value);
+        state.acked = new Array(count).fill(false);
+        $('nodeTrack').innerHTML = '';
+        for(let i=0; i<count; i++) {
+            $('nodeTrack').innerHTML += `<div class="frame-node" id="n-${i}">${i}</div>`;
+        }
+        drawStaticUI();
+        updateWindow();
+    }
+
+    function drawStaticUI() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.font = "bold 14px DM Sans";
+        ctx.beginPath(); ctx.moveTo(150, 30); ctx.lineTo(150, 5000); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(600, 30); ctx.lineTo(600, 5000); ctx.stroke();
+        ctx.fillStyle = "#64748b";
+        ctx.fillText("SENDER", 125, 20);
+        ctx.fillText("RECEIVER", 575, 20);
+    }
+
+    function updateWindow() {
+        const mode = $('simMode').value;
+        const size = mode === 'SW' ? 1 : parseInt($('winSize').value);
+        const frameW = 45; 
+        $('winOverlay').style.width = (size * frameW - 5) + 'px';
+        $('winOverlay').style.left = (state.base * frameW + 20) + 'px';
+    }
+
+    function drawArrow(tox, toy, angle, color) {
+        const headlen = 10;
+        ctx.setLineDash([]);
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(tox, toy);
+        ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI/6), toy - headlen * Math.sin(angle - Math.PI/6));
+        ctx.moveTo(tox, toy);
+        ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI/6), toy - headlen * Math.sin(angle + Math.PI/6));
+        ctx.stroke();
+    }
+
+    async function sendFrame(id) {
+        const isLost = Math.random() * 100 < parseInt($('frameLossRange').value);
+        const diagMode = $('diagramMode').value;
+        const startX = 150, endX = isLost ? 375 : 600;
+        const startY = state.y;
+        const endY = diagMode === 'diagonals' ? state.y + 40 : state.y;
+
+        $(`n-${id}`).classList.add('pending');
+        log(`Sender: Sending Frame ${id}`);
+
+        ctx.beginPath();
+        ctx.setLineDash(isLost ? [5, 5] : []);
+        ctx.strokeStyle = isLost ? "var(--error)" : "var(--accent)";
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        const angle = Math.atan2(endY - startY, endX - startX);
+        drawArrow(endX, endY, angle, isLost ? "var(--error)" : "var(--accent)");
+        ctx.fillStyle = isLost ? "var(--error)" : "var(--accent)";
+        ctx.fillText(`F${id}`, startX - 40, startY + 5);
+
+        state.y += 35;
+
+        if (isLost) {
+            setTimeout(() => {
+                $(`n-${id}`).className = 'frame-node lost';
+                log(`!! Frame ${id} Lost`, "var(--error)");
+                if ($('simMode').value === 'SW') state.isWaiting = false;
+            }, 600);
+        } else {
+            const currentY = endY;
+            setTimeout(() => receiveFrame(id, currentY), 600);
+        }
+        $('canvasScroll').scrollTop = state.y - 100;
+    }
+
+    function receiveFrame(id, arrivedY) {
+        const isAckLost = Math.random() * 100 < parseInt($('ackLossRange').value);
+        log(`Receiver: Frame ${id} OK, sending ACK`);
+        
+        const startX = 600, endX = isAckLost ? 375 : 150;
+        const startY = arrivedY;
+        const endY = arrivedY + 40;
+
+        ctx.beginPath();
+        ctx.setLineDash(isAckLost ? [5, 5] : []);
+        ctx.strokeStyle = isAckLost ? "var(--error)" : "var(--success)";
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        const angle = Math.atan2(endY - startY, endX - startX);
+        drawArrow(endX, endY, angle, isAckLost ? "var(--error)" : "var(--success)");
+        ctx.fillStyle = isAckLost ? "var(--error)" : "var(--success)";
+        ctx.fillText(`ACK${id}`, startX + 15, startY + 5);
+
+        setTimeout(() => {
+            if (isAckLost) {
+                log(`!! ACK ${id} Lost`, "var(--error)");
+                if ($('simMode').value === 'SW') state.isWaiting = false;
+            } else {
+                log(`Sender: Received ACK ${id}`);
+                $(`n-${id}`).className = 'frame-node sent';
+                state.acked[id] = true;
+                if ($('simMode').value === 'SW') {
+                    state.isWaiting = false;
+                    state.base++;
+                } else if (id === state.base) {
+                    while(state.acked[state.base]) state.base++;
+                }
+                updateWindow();
+            }
+        }, 600);
+    }
+
+    async function stepSim() {
+        const mode = $('simMode').value;
+        const size = mode === 'SW' ? 1 : parseInt($('winSize').value);
+        const total = parseInt($('numFrames').value);
+
+        while (!state.isWaiting && state.next < state.base + size && state.next < total) {
+            if (mode === 'SW') state.isWaiting = true;
+            await sendFrame(state.next++);
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        if (state.next >= total && state.base >= total) {
+            log("Simulation Complete.", "var(--accent)");
+            clearInterval(state.timer);
+        }
+    }
+
+    function startAuto() {
+        if (state.timer) clearInterval(state.timer);
+        state.timer = setInterval(stepSim, 2000);
+    }
+
+    function resetSim() {
+        clearInterval(state.timer);
+        state = { base: 0, next: 0, acked: [], y: 60, isWaiting: false, timer: null };
+        init();
+        log("System Reset.");
+    }
+
+    init();
+</script>
+</body>
+</html>
